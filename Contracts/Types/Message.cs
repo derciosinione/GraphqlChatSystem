@@ -1,10 +1,13 @@
+using R2yChatSystem.Contracts.Enum;
+
 namespace R2yChatSystem.Contracts.Types;
 
 public class Message
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public MessageType Type { get; set; } = MessageType.Text;
     public Guid ChatRoomId { get; set; }
-    public Guid UserId { get; set; }
+    public User Sender { get; set; } = null!;
     public string? Content { get; set; }
     public string? FileUrl { get; set; }
     public Message? ReplyToMessage { get; set; }
@@ -16,7 +19,7 @@ public class Message
 public class MessageRead
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid UserId { get; set; }
+    public string UserEmail { get; set; } = string.Empty;
     public DateTime ReadAt { get; set; } = DateTime.Now;
 }
 
@@ -40,6 +43,6 @@ public class PollOption
 public class PollVote
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid UserId { get; set; }
+    public string UserEmail { get; set; } = string.Empty;
     public DateTime VotedAt { get; set; } = DateTime.Now;
 }

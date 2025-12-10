@@ -49,10 +49,10 @@ public class UserRepository : IUserRepository
         ];
     }
 
-    public async Task<User> GetUserByEmail(string email)
+    public async Task<User?> GetUserByEmail(string email)
     {
-        return (await Task.FromResult(_users.FirstOrDefault(u =>
-            u.Email.Equals(email, StringComparison.OrdinalIgnoreCase))))!;
+        var user = _users.FirstOrDefault(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase));
+        return await Task.FromResult(user);
     }
 
     public async Task<List<User>> GetAllUsers()
