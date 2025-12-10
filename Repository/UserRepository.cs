@@ -10,7 +10,7 @@ public class UserRepository : IUserRepository
 
     public UserRepository()
     {
-        _users = new List<User>();
+        _users = [];
 
         GenerateRandomUsers(20);
         _nextId = _users.Max(u => u.Id) + 1;
@@ -18,14 +18,24 @@ public class UserRepository : IUserRepository
 
     private void GenerateRandomUsers(int count)
     {
-        var firstNames = new[] { "James", "Mary", "Robert", "Patricia", "John", "Jennifer", "Michael", "Linda", "David", "Elizabeth", "William", "Barbara", "Richard", "Susan", "Joseph", "Jessica", "Thomas", "Sarah", "Charles", "Karen" };
-        var lastNames = new[] { "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin" };
+        var firstNames = new[]
+        {
+            "James", "Mary", "Robert", "Patricia", "John", "Jennifer", "Michael", "Linda", "David", "Elizabeth",
+            "William", "Barbara", "Richard", "Susan", "Joseph", "Jessica", "Thomas", "Sarah", "Charles", "Karen"
+        };
+        
+        var lastNames = new[]
+        {
+            "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez",
+            "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin"
+        };
+        
         var domains = new[] { "example.com", "test.org", "demo.net", "sample.io" };
 
         var random = new Random();
         var startId = _users.Count + 1;
 
-        for (int i = 0; i < count; i++)
+        for (var i = 0; i < count; i++)
         {
             var firstName = firstNames[random.Next(firstNames.Length)];
             var lastName = lastNames[random.Next(lastNames.Length)];
@@ -34,7 +44,7 @@ public class UserRepository : IUserRepository
             var name = $"{firstName} {lastName}";
             var email = $"{firstName.ToLower()}.{lastName.ToLower()}@{domain}";
 
-            _users.Add(new(startId + i, name, email));
+            _users.Add(new User(startId + i, name, email));
         }
     }
 
