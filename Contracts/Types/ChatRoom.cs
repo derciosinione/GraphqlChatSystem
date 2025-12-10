@@ -13,7 +13,7 @@ public class ChatRoom
 }
 
 
-public class ChatRoomParticipant
+public record ChatRoomParticipant
 {
     public string UserEmail { get; set; } = string.Empty;
     public User User { get; set; } = null!;

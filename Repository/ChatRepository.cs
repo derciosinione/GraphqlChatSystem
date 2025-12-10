@@ -272,7 +272,7 @@ public class ChatRepository : IChatRepository
 
         var room = ChatRooms.FirstOrDefault(c => c.Id == input.ChatRoomId)
                    ?? throw new Exception("Chat room not found");
-        
+
         Message? replyToMessage = null;
         if (input.ReplyToMessageId.HasValue)
         {
@@ -293,10 +293,10 @@ public class ChatRepository : IChatRepository
                 Options = input.Poll.Options.Select(o => new PollOption { Text = o }).ToList()
             };
         }
-        
+
         var newMessage = new Message
         {
-            Type =  input.DetermineMessageType(),
+            Type = input.DetermineMessageType(),
             ChatRoomId = input.ChatRoomId,
             Sender = sender,
             Content = input.Content,
@@ -311,7 +311,7 @@ public class ChatRepository : IChatRepository
 
         return await Task.FromResult(newMessage);
     }
-    
+
     public async Task<Message> VoteOnPoll(VotePollInput input)
     {
         await EnsureInitialized();

@@ -2,7 +2,7 @@ using R2yChatSystem.Contracts.Enum;
 
 namespace R2yChatSystem.Contracts.Types;
 
-public class Message
+public record Message
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public MessageType Type { get; set; } = MessageType.Text;
@@ -16,14 +16,14 @@ public class Message
     public DateTime SentAt { get; set; } = DateTime.Now;
 }
 
-public class MessageRead
+public record MessageRead
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string UserEmail { get; set; } = string.Empty;
     public DateTime ReadAt { get; set; } = DateTime.Now;
 }
 
-public class Poll
+public record Poll
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public required string Question { get; set; }
@@ -33,14 +33,14 @@ public class Poll
     public DateTime? ExpiresAt { get; set; }
 }
 
-public class PollOption
+public record PollOption
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public required string Text { get; set; }
     public List<PollVote> Votes { get; set; } = [];
 }
 
-public class PollVote
+public record PollVote
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string UserEmail { get; set; } = string.Empty;

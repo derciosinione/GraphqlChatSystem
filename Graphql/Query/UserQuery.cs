@@ -8,7 +8,10 @@ public class UserQuery
 {
     public async Task<User> GetUserByEmail(IUserRepository userRepository, string email)
     {
-        return await userRepository.GetUserByEmail(email);
+        var user = await userRepository.GetUserByEmail(email) 
+                   ?? throw new GraphQLException("User not found");
+
+        return user;
     }
 
     public async Task<List<User>> GetAllUsers(IUserRepository userRepository)
