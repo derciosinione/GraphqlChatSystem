@@ -5,52 +5,54 @@ namespace R2yChatSystem.Repository;
 
 public class UserRepository : IUserRepository
 {
-    private readonly List<User> _users;
-    private int _nextId;
+    private List<User> _users;
 
     public UserRepository()
     {
         _users = [];
-
-        GenerateRandomUsers(20);
-        _nextId = _users.Max(u => u.Id) + 1;
+        GenerateRandomUsers();
     }
 
-    private void GenerateRandomUsers(int count)
+    private void GenerateRandomUsers()
     {
-        var firstNames = new[]
-        {
-            "James", "Mary", "Robert", "Patricia", "John", "Jennifer", "Michael", "Linda", "David", "Elizabeth",
-            "William", "Barbara", "Richard", "Susan", "Joseph", "Jessica", "Thomas", "Sarah", "Charles", "Karen"
-        };
-        
-        var lastNames = new[]
-        {
-            "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez",
-            "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin"
-        };
-        
-        var domains = new[] { "example.com", "test.org", "demo.net", "sample.io" };
-
-        var random = new Random();
-        var startId = _users.Count + 1;
-
-        for (var i = 0; i < count; i++)
-        {
-            var firstName = firstNames[random.Next(firstNames.Length)];
-            var lastName = lastNames[random.Next(lastNames.Length)];
-            var domain = domains[random.Next(domains.Length)];
-
-            var name = $"{firstName} {lastName}";
-            var email = $"{firstName.ToLower()}.{lastName.ToLower()}@{domain}";
-
-            _users.Add(new User(startId + i, name, email));
-        }
+        _users =
+        [
+            new User("Ana Silva", "ana.silva@example.com"),
+            new User("Bruno Costa", "bruno.costa@example.com"),
+            new User("Carla Mendes", "carla.mendes@example.com"),
+            new User("Daniel Rocha", "daniel.rocha@example.com"),
+            new User("Eduarda Pinto", "eduarda.pinto@example.com"),
+            new User("Fábio Matos", "fabio.matos@example.com"),
+            new User("Gabriela Sousa", "gabriela.sousa@example.com"),
+            new User("Henrique Dias", "henrique.dias@example.com"),
+            new User("Inês Barros", "ines.barros@example.com"),
+            new User("João Ribeiro", "joao.ribeiro@example.com"),
+            new User("Kátia Ramos", "katia.ramos@example.com"),
+            new User("Leonardo Reis", "leonardo.reis@example.com"),
+            new("Mariana Lopes", "mariana.lopes@example.com"),
+            new("Nuno Carvalho", "nuno.carvalho@example.com"),
+            new("Óscar Figueiredo", "oscar.figueiredo@example.com"),
+            new("Patrícia Amaral", "patricia.amaral@example.com"),
+            new("Quésia Martins", "quesia.martins@example.com"),
+            new("Rafael Gomes", "rafael.gomes@example.com"),
+            new("Sara Cunha", "sara.cunha@example.com"),
+            new("Tiago Ferraz", "tiago.ferraz@example.com"),
+            new("Ursula Ribeiro", "ursula.ribeiro@example.com"),
+            new("Vasco Moura", "vasco.moura@example.com"),
+            new("William Duarte", "william.duarte@example.com"),
+            new("Xavier Pires", "xavier.pires@example.com"),
+            new("Yara Fontes", "yara.fontes@example.com"),
+            new("Zé Luís", "ze.luis@example.com"),
+            new("Beatriz Serra", "beatriz.serra@example.com"),
+            new("Cristiano Vale", "cristiano.vale@example.com"),
+            new("Diana Rocha", "diana.rocha@example.com")
+        ];
     }
 
-    public async Task<User> GetUserById(int id)
+    public async Task<User> GetUserByEmail(string email)
     {
-        return (await Task.FromResult(_users.FirstOrDefault(u => u.Id == id)))!;
+        return (await Task.FromResult(_users.FirstOrDefault(u =>
+            u.Email.Equals(email, StringComparison.OrdinalIgnoreCase))))!;
     }
 
     public async Task<List<User>> GetAllUsers()
@@ -60,8 +62,7 @@ public class UserRepository : IUserRepository
 
     public async Task<User> AddUser(User user)
     {
-        var newUser = user with { Id = _nextId++ };
-        _users.Add(newUser);
-        return await Task.FromResult(newUser);
+        _users.Add(user);
+        return await Task.FromResult(user);
     }
 }

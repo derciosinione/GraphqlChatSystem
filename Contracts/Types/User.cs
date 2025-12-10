@@ -1,3 +1,3 @@
 namespace R2yChatSystem.Contracts.Types;
 
-public record User(int Id, string Name, string Email);
+public record User(string Name, string Email);

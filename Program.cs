@@ -8,8 +8,8 @@ builder.AddGraphQL()
     .AddSorting()
     .AddTypes();
 
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<IChatRepository, ChatRepository>();
+builder.Services.AddSingleton<IUserRepository, UserRepository>();
+builder.Services.AddSingleton<IChatRepository, ChatRepository>();
 
 var app = builder.Build();
 

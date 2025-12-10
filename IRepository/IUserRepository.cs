@@ -4,7 +4,7 @@ namespace R2yChatSystem.IRepository;
 
 public interface IUserRepository
 {
-    Task<User> GetUserById(int id);
+    Task<User> GetUserByEmail(string email);
     Task<List<User>> GetAllUsers();
     Task<User> AddUser(User user);
 }

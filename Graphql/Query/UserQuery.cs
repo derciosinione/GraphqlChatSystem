@@ -7,13 +7,13 @@ namespace R2yChatSystem.Graphql.Query;
 [QueryType]
 public class UserQuery
 {
-    public async Task<User> GetUserById([FromServices] IUserRepository userRepository, int id)
+    public async Task<User> GetUserByEmail([FromServices] IUserRepository userRepository, string email)
     {
-        return await userRepository.GetUserById(id);
+        return await userRepository.GetUserByEmail(email);
     }
 
     public async Task<List<User>> GetAllUsers([FromServices] IUserRepository userRepository)
     {
-        return  await userRepository.GetAllUsers();
+        return await userRepository.GetAllUsers();
     }
 }
