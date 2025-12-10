@@ -21,7 +21,7 @@ public class ChatQuery
         return await chatRepository.GetAllChatRoomByUserEmail(userEmail);
     }
     
-    public async Task<List<Message>> GetAllChatRoomByUserEmail(IChatRepository chatRepository, Guid roomId)
+    public async Task<List<Message>> GetAllMessagesByChatRoomId(IChatRepository chatRepository, Guid roomId)
     {
         return await chatRepository.GetAllMessagesByChatRoomId(roomId);
     }

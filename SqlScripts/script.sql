@@ -17,14 +17,14 @@ go
 CREATE TABLE ChatRooms
 (
     Id           UNIQUEIDENTIFIER PRIMARY KEY,
-    Type         INT           NOT NULL, -- enum RoomType
+    Type         NVARCHAR(20)  NOT NULL, -- enum RoomType
     Name         NVARCHAR(255) NULL,
     Participants NVARCHAR(MAX) NULL,     -- JSON array: ChatRoomParticipant[]
     Messages     NVARCHAR(MAX) NULL,     -- JSON array: Message[] with nested Poll, Votes, Reply, ReadBy
     CreatedAt    DATETIME2     NOT NULL
 );
 
-
+drop table ChatRooms
 select *
 from Users;
 

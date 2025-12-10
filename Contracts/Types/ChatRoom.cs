@@ -10,14 +10,40 @@ public class ChatRoom
     public List<ChatRoomParticipant> Participants { get; set; } = [];
     public List<Message> Messages { get; set; } = [];
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    public ChatRoom ShallowCopy()
+    {
+        var roomView = new ChatRoom
+        {
+            Id = Id,
+            Type = Type,
+            CreatedAt = CreatedAt,
+            Participants = Participants,
+            Name = Name,
+            Messages = Messages
+        };
+        
+        return roomView;
+    }
 }
 
 
 public record ChatRoomParticipant
 {
-    public string UserEmail { get; set; } = string.Empty;
     public User User { get; set; } = null!;
     public Role Role { get; set; } = Role.Member;
     public DateTime JoinedAt { get; set; } = DateTime.Now;
+
+    public static ChatRoomParticipant Add(User destinationUser = null!, Role role = Role.Member)
+    {
+        ArgumentNullException.ThrowIfNull(destinationUser);
+        
+        return new ChatRoomParticipant
+        {
+            Role = role,
+            JoinedAt = DateTime.Now,
+            User = destinationUser
+        };
+    }
 }
 

@@ -1,277 +1,173 @@
+using System.Text.Json;
+using Dapper;
+using Microsoft.Data.SqlClient;
 using R2yChatSystem.Contracts.Enum;
 using R2yChatSystem.Contracts.Inputs;
 using R2yChatSystem.Contracts.Types;
 using R2yChatSystem.IRepository;
+using R2yChatSystem.Mappers;
+using R2yChatSystem.Model;
 
 namespace R2yChatSystem.Repository;
 
 public class ChatRepository : IChatRepository
 {
-    private List<ChatRoom> ChatRooms = [];
+    private readonly string _connectionString;
     private readonly IUserRepository _userRepository;
-    private bool _isInitialized;
 
-    public ChatRepository(IUserRepository userRepository)
+    public ChatRepository(IConfiguration configuration, IUserRepository userRepository)
     {
-        ChatRooms = [];
         _userRepository = userRepository;
-        _isInitialized = false;
+        _connectionString = configuration.GetConnectionString("DefaultConnection")
+                            ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+
+        InitializeDatabase().Wait();
     }
 
-    private async Task EnsureInitialized()
+    private async Task InitializeDatabase()
     {
-        if (_isInitialized) return;
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.OpenAsync();
 
-        await GenerateMockData();
-        _isInitialized = true;
+        var tableExists = await connection.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'ChatRooms'");
+
+        if (tableExists == 0)
+        {
+            await connection.ExecuteAsync("""
+                                              CREATE TABLE ChatRooms
+                                              (
+                                                  Id           UNIQUEIDENTIFIER PRIMARY KEY,
+                                                  Type         NVARCHAR(20)  NOT NULL,
+                                                  Name         NVARCHAR(255) NULL,
+                                                  Participants NVARCHAR(MAX) NULL,
+                                                  Messages     NVARCHAR(MAX) NULL,
+                                                  CreatedAt    DATETIME2     NOT NULL
+                                              )
+                                          """);
+        }
     }
-
-    private async Task GenerateMockData()
-    {
-        ChatRooms = [];
-
-        var privateRoomId = Guid.NewGuid();
-        var groupRoomId = Guid.NewGuid();
-
-        ChatRooms.AddRange([
-            new ChatRoom
-            {
-                Id = privateRoomId,
-                Type = RoomType.Private,
-                Participants = [
-                    new ChatRoomParticipant
-                    {
-                        UserEmail = "ana.silva@example.com",
-                        Role = Role.Admin,
-                        JoinedAt = DateTime.Now,
-                        User = await _userRepository.GetUserByEmail("ana.silva@example.com")
-                    },
-                    new ChatRoomParticipant
-                    {
-                        UserEmail = "bruno.costa@example.com",
-                        Role = Role.Member,
-                        JoinedAt = DateTime.Now,
-                        User = await _userRepository.GetUserByEmail("bruno.costa@example.com")
-                    }
-                ],
-                CreatedAt = DateTime.Now,
-            },
-            new ChatRoom
-            {
-                Id = groupRoomId,
-                Type = RoomType.Group,
-                Name = "Group Room",
-                Participants = [
-                    new ChatRoomParticipant
-                    {
-                        UserEmail = "ana.silva@example.com",
-                        Role = Role.Admin,
-                        JoinedAt = DateTime.Now,
-                        User = await _userRepository.GetUserByEmail("ana.silva@example.com")
-                    },
-                    new ChatRoomParticipant
-                    {
-                        UserEmail = "bruno.costa@example.com",
-                        Role = Role.Member,
-                        JoinedAt = DateTime.Now,
-                        User = await _userRepository.GetUserByEmail("bruno.costa@example.com")
-                    },
-                    new ChatRoomParticipant
-                    {
-                        UserEmail = "ze.luis@example.com",
-                        Role = Role.Member,
-                        JoinedAt = DateTime.Now,
-                        User = await _userRepository.GetUserByEmail("ze.luis@example.com")
-                    },
-                    new ChatRoomParticipant
-                    {
-                        UserEmail = "vasco.moura@example.com",
-                        Role = Role.Member,
-                        JoinedAt = DateTime.Now,
-                        User = await _userRepository.GetUserByEmail("vasco.moura@example.com")
-                    }
-                ],
-                CreatedAt = DateTime.Now,
-            }
-        ]);
-    }
-
 
     public async Task<List<ChatRoom>> GetAllChatRooms()
     {
-        await EnsureInitialized();
-        return await Task.FromResult(ChatRooms);
+        await using var connection = new SqlConnection(_connectionString);
+        var rooms = await connection.QueryAsync<ChatRoomDbModel>("SELECT * FROM ChatRooms");
+        return rooms.ToResponse();
     }
 
     public async Task<ChatRoom> GetChatRoomById(Guid id)
     {
-        await EnsureInitialized();
-        var room = ChatRooms.FirstOrDefault(c => c.Id == id)
-                   ?? throw new Exception("Chat room not found");
-        return await Task.FromResult(room);
+        await using var connection = new SqlConnection(_connectionString);
+        var room = await connection.QueryFirstOrDefaultAsync<ChatRoomDbModel>(
+            "SELECT * FROM ChatRooms WHERE Id = @Id", new { Id = id });
+
+        return room?.ToResponse() ?? throw new Exception("Chat room not found");
     }
 
     public async Task<List<ChatRoom>> GetAllChatRoomByUserEmail(string userEmail)
     {
-        await EnsureInitialized();
-        var rooms = ChatRooms.Where(c =>
-            c.Participants.Any(p => p.UserEmail.Equals(userEmail, StringComparison.OrdinalIgnoreCase))).ToList();
+        await using var connection = new SqlConnection(_connectionString);
+
+        // Using OPENJSON to filter by user email in Participants JSON array
+        // Participants is ChatRoomParticipant[] -> { "UserEmail": "...", ... }
+        const string sql = """
+                               SELECT * FROM ChatRooms
+                               WHERE EXISTS (
+                                   SELECT 1 
+                                   FROM OPENJSON(Participants) WITH (UserEmail NVARCHAR(255) '$.User.Email') 
+                                   WHERE UserEmail = @UserEmail
+                               )
+                           """;
+
+        var rooms = await connection.QueryAsync<ChatRoomDbModel>(sql, new { UserEmail = userEmail });
 
         var result = new List<ChatRoom>();
 
-        foreach (var room in rooms)
+        foreach (var room in rooms.ToResponse())
         {
-            // Create a shallow copy to safely modify the Name without affecting the singleton storage
-            var roomView = new ChatRoom
-            {
-                Id = room.Id,
-                Type = room.Type,
-                CreatedAt = room.CreatedAt,
-                Participants = room.Participants,
-                Name = room.Name
-            };
+            var roomView = room.ShallowCopy();
 
             if (room.Type == RoomType.Private)
             {
                 var otherParticipant = room.Participants.FirstOrDefault(p =>
-                    !p.UserEmail.Equals(userEmail, StringComparison.OrdinalIgnoreCase));
+                    !p.User.Email.Equals(userEmail, StringComparison.OrdinalIgnoreCase));
+
                 if (otherParticipant?.User != null)
-                {
                     roomView.Name = otherParticipant.User.Name;
-                }
             }
 
             result.Add(roomView);
         }
 
-        return await Task.FromResult(result);
+        return result;
     }
 
-    public async Task<ChatRoom> CreateGroupRoom(CreateGroupRoomInput chatRoom)
+    public async Task<ChatRoom> CreateGroupRoom(CreateGroupRoomInput input)
     {
-        await EnsureInitialized();
-
         var participants = new List<ChatRoomParticipant>();
-        var roomId = Guid.NewGuid();
+
+        var creatorUser = await _userRepository.GetUserByEmail(input.CreatorEmail) ??
+                          throw new Exception("Creator user not found");
 
         // Add Creator as Admin
-        var creator = await _userRepository.GetUserByEmail(chatRoom.CreatorEmail);
-        if (creator != null)
-        {
-            participants.Add(new ChatRoomParticipant
-            {
-                UserEmail = creator.Email,
-                Role = Role.Admin,
-                JoinedAt = DateTime.Now,
-                User = creator
-            });
-        }
+        participants.Add(ChatRoomParticipant.Add(creatorUser, Role.Admin));
 
-        foreach (var email in chatRoom.UserEmails)
+        //TODO: Implement a method in _userRepository to Get Users by Email List, send list of emails and return all users so that do not have to call db in loop
+        foreach (var email in input.ParticipantEmails.Where(email => email != input.CreatorEmail))
         {
-            // Skip if creator is also in the list (avoid duplicates)
-            if (email == chatRoom.CreatorEmail) continue;
-
             var user = await _userRepository.GetUserByEmail(email);
-            if (user != null)
-            {
-                participants.Add(new ChatRoomParticipant
-                {
-                    UserEmail = user.Email,
-                    Role = Role.Member,
-                    JoinedAt = DateTime.Now,
-                    User = user
-                });
-            }
+            if (user != null) participants.Add(ChatRoomParticipant.Add(user));
         }
 
-        var newRoom = new ChatRoom
-        {
-            Name = chatRoom.Name,
-            Type = RoomType.Group,
-            CreatedAt = DateTime.Now,
-            Participants = participants
-        };
-
-        ChatRooms.Add(newRoom);
-        return await Task.FromResult(newRoom);
+        return await CreateChatRoomWrapper(roomType: RoomType.Group, input.Name, participants: participants);
     }
 
     public async Task<ChatRoom> CreatePrivateRoom(CreatePrivateRoomInput input)
     {
-        await EnsureInitialized();
+        ArgumentException.ThrowIfNullOrWhiteSpace(input.CreatorEmail);
+        ArgumentException.ThrowIfNullOrWhiteSpace(input.UserEmail);
 
+        if (input.UserEmail == input.CreatorEmail)
+            throw new Exception("The destination user can not be the same as creator.");
+
+        if (await CheckIfPrivateRoomExists(input.CreatorEmail, input.UserEmail))
+            throw new Exception("A private chat between these users already exists.");
+        
         var participants = new List<ChatRoomParticipant>();
-        var roomId = Guid.NewGuid();
 
-        // Add Creator
-        var creator = await _userRepository.GetUserByEmail(input.CreatorEmail);
-        if (creator != null)
-        {
-            participants.Add(new ChatRoomParticipant
-            {
-                UserEmail = creator.Email,
-                Role = Role.Member, // Using Member for private chat equality
-                JoinedAt = DateTime.Now,
-                User = creator
-            });
-        }
+        var creatorUser = await _userRepository.GetUserByEmail(input.CreatorEmail) ??
+                          throw new Exception("Creator user not found");
+        var destinationUser = await _userRepository.GetUserByEmail(input.UserEmail) ??
+                              throw new Exception("Destination user not found");
 
-        // Add Target User
-        if (input.UserEmail != input.CreatorEmail)
-        {
-            var user = await _userRepository.GetUserByEmail(input.UserEmail);
-            if (user != null)
-            {
-                participants.Add(new ChatRoomParticipant
-                {
-                    UserEmail = user.Email,
-                    Role = Role.Member,
-                    JoinedAt = DateTime.Now,
-                    User = user
-                });
-            }
-        }
+        participants.Add(ChatRoomParticipant.Add(creatorUser));
+        participants.Add(ChatRoomParticipant.Add(destinationUser));
 
-        var newRoom = new ChatRoom
-        {
-            Name = null, // Private room has no name
-            Type = RoomType.Private,
-            CreatedAt = DateTime.Now,
-            Participants = participants
-        };
-
-        ChatRooms.Add(newRoom);
-        return await Task.FromResult(newRoom);
+        return await CreateChatRoomWrapper(participants: participants);
     }
-
-    public async Task DeleteChatRoom(Guid id)
-    {
-        await EnsureInitialized();
-        var room = ChatRooms.FirstOrDefault(c => c.Id == id);
-        if (room != null)
-        {
-            ChatRooms.Remove(room);
-        }
-
-        await Task.CompletedTask;
-    }
+    
     public async Task<List<Message>> GetAllMessagesByChatRoomId(Guid chatRoomId)
     {
-        await EnsureInitialized();
-        var room = ChatRooms.FirstOrDefault(c => c.Id == chatRoomId);
-        if (room == null) return [];
-        return await Task.FromResult(room.Messages ?? []);
+        await using var connection = new SqlConnection(_connectionString);
+        var json = await connection.QueryFirstOrDefaultAsync<string>(
+            "SELECT Messages FROM ChatRooms WHERE Id = @Id", new { Id = chatRoomId });
+
+        if (string.IsNullOrEmpty(json)) return [];
+        return JsonSerializer.Deserialize<List<Message>>(json) ?? [];
     }
 
     public async Task<Message> SendMessage(CreateMessageInput input)
     {
-        await EnsureInitialized();
+        var sender = await _userRepository.GetUserByEmail(input.SenderEmail)
+                     ?? throw new Exception("Sender user not found");
 
-        var sender = await _userRepository.GetUserByEmail(input.SenderEmail) ?? throw new Exception("Sender user not found");
+        var room = await GetChatRoomById(input.ChatRoomId);
 
-        var room = ChatRooms.FirstOrDefault(c => c.Id == input.ChatRoomId)
-                   ?? throw new Exception("Chat room not found");
+        var isValidParticipant =
+            room.Participants.Any(x => x.User.Email.Equals(input.SenderEmail, StringComparison.OrdinalIgnoreCase));
+        
+        if (!isValidParticipant)
+            throw  new Exception("Sender user not found in the chat room.");
 
         Message? replyToMessage = null;
         if (input.ReplyToMessageId.HasValue)
@@ -309,26 +205,33 @@ public class ChatRepository : IChatRepository
         room.Messages ??= [];
         room.Messages.Add(newMessage);
 
-        return await Task.FromResult(newMessage);
+        await UpdateRoomMessages(input.ChatRoomId, room.Messages);
+
+        return newMessage;
     }
 
     public async Task<Message> VoteOnPoll(VotePollInput input)
     {
-        await EnsureInitialized();
-        // Locate the message containing the poll
-        // In a real DB we'd query by MessageId directly. Here we might need to iterate rooms or assume we know the room?
-        // Since VotePollInput doesn't have ChatRoomId, we have to search all rooms or enforce RoomId in Input.
-        // For efficiency in this mock, let's assume valid ID finds it. Traversing all rooms is okay for mock.
+        await using var connection = new SqlConnection(_connectionString);
 
-        Message? message = null;
-        foreach (var room in ChatRooms)
-        {
-            if (room.Messages == null) continue;
-            message = room.Messages.FirstOrDefault(m => m.Id == input.MessageId);
-            if (message != null) break;
-        }
+        // Find the room containing the message using OPENJSON
+        const string sql = """
+                               SELECT Top 1 * FROM ChatRooms 
+                               WHERE EXISTS (
+                                   SELECT 1 
+                                   FROM OPENJSON(Messages) WITH (Id UNIQUEIDENTIFIER '$.Id') 
+                                   WHERE Id = @MessageId
+                               )
+                           """;
 
-        if (message == null || message.Poll == null) throw new Exception("Poll not found.");
+        var roomDb = await connection.QueryFirstOrDefaultAsync<ChatRoomDbModel>(sql, new { input.MessageId })
+                     ?? throw new Exception("Poll not found.");
+
+        var room = roomDb.ToResponse();
+        var message = room.Messages.FirstOrDefault(m => m.Id == input.MessageId)
+                      ?? throw new Exception("Message not found");
+
+        if (message.Poll == null) throw new Exception("Poll not found.");
 
         if (message.Poll.ExpiresAt.HasValue && message.Poll.ExpiresAt < DateTime.Now)
             throw new Exception("Poll has expired.");
@@ -336,13 +239,10 @@ public class ChatRepository : IChatRepository
         var option = message.Poll.Options.FirstOrDefault(o => o.Id == input.OptionId)
                      ?? throw new Exception("Invalid poll option.");
 
-        // Check if user already voted on this poll
         var alreadyVoted = message.Poll.Options.Any(o => o.Votes.Any(v => v.UserEmail == input.UserEmail));
 
         if (!message.Poll.IsMultipleChoice && alreadyVoted)
         {
-            // If single choice and already voted, maybe we change vote? Or throw?
-            // Let's implement toggle/change behavior: remove old vote first.
             foreach (var opt in message.Poll.Options)
             {
                 var existingVote = opt.Votes.FirstOrDefault(v => v.UserEmail == input.UserEmail);
@@ -353,18 +253,87 @@ public class ChatRepository : IChatRepository
             }
         }
 
-        // Add new vote (if not already voted for this specific option, to avoid duplicates)
         if (option.Votes.All(v => v.UserEmail != input.UserEmail))
         {
             option.Votes.Add(new PollVote { UserEmail = input.UserEmail });
         }
         else
         {
-            // Toggle off if clicking same option? Common UI pattern.
             var existing = option.Votes.First(v => v.UserEmail == input.UserEmail);
             option.Votes.Remove(existing);
         }
 
-        return await Task.FromResult(message);
+        await UpdateRoomMessages(room.Id, room.Messages);
+
+        return message;
     }
+
+    public async Task DeleteChatRoom(Guid id)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.ExecuteAsync("DELETE FROM ChatRooms WHERE Id = @Id", new { Id = id });
+    }
+
+    #region  Helpers
+
+     private async Task UpdateRoomMessages(Guid roomId, List<Message> messages)
+    {
+        var json = JsonSerializer.Serialize(messages);
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.ExecuteAsync(
+            "UPDATE ChatRooms SET Messages = @Messages WHERE Id = @Id",
+            new { Messages = json, Id = roomId });
+    }
+
+    private async Task<ChatRoom> CreateChatRoomWrapper(RoomType roomType = RoomType.Private, string? roomName = null,
+        List<ChatRoomParticipant>? participants = null!)
+    {
+        participants ??= [];
+
+        var newRoom = new ChatRoom
+        {
+            Name = roomName,
+            Type = roomType,
+            CreatedAt = DateTime.Now,
+            Participants = participants
+        };
+
+        var dbModel = new
+        {
+            newRoom.Id,
+            Type = newRoom.Type.ToString(),
+            newRoom.Name,
+            Participants = JsonSerializer.Serialize(newRoom.Participants),
+            Messages = JsonSerializer.Serialize(new List<Message>()),
+            newRoom.CreatedAt
+        };
+
+        await using var connection = new SqlConnection(_connectionString);
+        await connection.ExecuteAsync("""
+                                          INSERT INTO ChatRooms (Id, Type, Name, Participants, Messages, CreatedAt)
+                                          VALUES (@Id, @Type, @Name, @Participants, @Messages, @CreatedAt)
+                                      """, dbModel);
+
+        return newRoom;
+    }
+    
+    private async Task<bool> CheckIfPrivateRoomExists(string firstEmail, string secondEmail)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        const string sql = """
+                               SELECT COUNT(1) 
+                               FROM ChatRooms 
+                               WHERE Type = 'Private' 
+                               AND EXISTS (
+                                   SELECT 1 FROM OPENJSON(Participants) WITH (UserEmail NVARCHAR(255) '$.User.Email') WHERE UserEmail = @FirstEmail
+                               )
+                               AND EXISTS (
+                                   SELECT 1 FROM OPENJSON(Participants) WITH (UserEmail NVARCHAR(255) '$.User.Email') WHERE UserEmail = @SecondEmail
+                               )
+                           """;
+
+        var count = await connection.ExecuteScalarAsync<int>(sql, new { FirstEmail = firstEmail, SecondEmail = secondEmail });
+        return count > 0;
+    }
+    #endregion
 }
