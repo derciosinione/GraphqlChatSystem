@@ -1,3 +1,4 @@
+using R2yChatSystem.Contracts.Enum;
 using R2yChatSystem.Contracts.Inputs;
 using R2yChatSystem.Contracts.Types;
 using R2yChatSystem.IRepository;
@@ -7,7 +8,6 @@ namespace R2yChatSystem.Repository;
 public class ChatRepository : IChatRepository
 {
     private List<ChatRoom> ChatRooms = [];
-    private int _nextId;
     private readonly IUserRepository _userRepository;
     private bool _isInitialized;
 
@@ -23,65 +23,85 @@ public class ChatRepository : IChatRepository
         if (_isInitialized) return;
 
         await GenerateMockData();
-        _nextId = ChatRooms.Count != 0 ? ChatRooms.Max(c => c.Id) + 1 : 1;
         _isInitialized = true;
     }
 
     private async Task GenerateMockData()
     {
-        // var random = new Random();
-        //
-        // var roomNames = new[]
-        // {
-        //     "General", "Random", "Dev Team", "Design", "Marketing", "Sales", "Support", "HR", "Operations", "Strategy"
-        // };
+        ChatRooms = [];
 
-        // var allUsers = await _userRepository.GetAllUsers();
-        // if (allUsers.Count == 0) return; // Should not happen given UserRepository implementation
-        //
-        // // Generate 25 mock rooms
-        // for (var i = 1; i <= 25; i++)
-        // {
-        //     var isGroup = random.NextDouble() > 0.3; // 70% chance of group room
-        //     var roomType = isGroup ? RoomType.Group : RoomType.Private;
-        //     var participants = GenerateRandomParticipants(random, allUsers, i, roomType);
-        //
-        //     var name = isGroup
-        //         ? roomNames[random.Next(roomNames.Length)] + " " + random.Next(1, 100)
-        //         : null; // Private rooms have null name
-        //
-        //     var room = new ChatRoom
-        //     {
-        //         Id = i,
-        //         Type = roomType,
-        //         Name = name,
-        //         CreatedAt = DateTime.Now.AddDays(-random.Next(1, 365)),
-        //         Participants = participants
-        //     };
-        //
-        //     _chatRooms.Add(room);
-        // }
-    }
+        var privateRoomId = Guid.NewGuid();
+        var groupRoomId = Guid.NewGuid();
 
-    private List<ChatRoomParticipant> GenerateRandomParticipants(Random random, List<User> allUsers, int roomId, RoomType type)
-    {
-        // Private: exactly 2. Group: 2 to 6.
-        var count = type == RoomType.Private ? 2 : random.Next(2, 6);
-
-        // Pick random unique users from allUsers
-        var shuffledUsers = allUsers.OrderBy(x => random.Next()).Take(count).ToList();
-
-        return shuffledUsers.Select((t, i) => new ChatRoomParticipant
+        ChatRooms.AddRange([
+            new ChatRoom
             {
-                Id = random.Next(1000, 9999),
-                ChatRoomId = roomId,
-                UserEmail = t.Email,
-                Role = (i == 0 && type == RoomType.Group) ? Role.Admin : Role.Member, // Only group has clear Admin usually, but let's keep first as Admin or Member
-                JoinedAt = DateTime.Now.AddDays(-random.Next(1, 100)),
-                User = t
-            })
-            .ToList();
+                Id = privateRoomId,
+                Type = RoomType.Private,
+                Participants = [
+                    new ChatRoomParticipant
+                    {
+                        ChatRoomId = privateRoomId,
+                        UserEmail = "ana.silva@example.com",
+                        Role = Role.Admin,
+                        JoinedAt = DateTime.Now,
+                        User = await _userRepository.GetUserByEmail("ana.silva@example.com")
+                    },
+                    new ChatRoomParticipant
+                    {
+                        ChatRoomId = privateRoomId,
+                        UserEmail = "bruno.costa@example.com",
+                        Role = Role.Member,
+                        JoinedAt = DateTime.Now,
+                        User = await _userRepository.GetUserByEmail("bruno.costa@example.com")
+                    }
+                ],
+                CreatedAt = DateTime.Now,
+            },
+            new ChatRoom
+            {
+                Id = groupRoomId,
+                Type = RoomType.Group,
+                Name = "Group Room",
+                Participants = [
+                    new ChatRoomParticipant
+                    {
+                        ChatRoomId = groupRoomId,
+                        UserEmail = "ana.silva@example.com",
+                        Role = Role.Admin,
+                        JoinedAt = DateTime.Now,
+                        User = await _userRepository.GetUserByEmail("ana.silva@example.com")
+                    },
+                    new ChatRoomParticipant
+                    {
+                        ChatRoomId = groupRoomId,
+                        UserEmail = "bruno.costa@example.com",
+                        Role = Role.Member,
+                        JoinedAt = DateTime.Now,
+                        User = await _userRepository.GetUserByEmail("bruno.costa@example.com")
+                    },
+                    new ChatRoomParticipant
+                    {
+                        ChatRoomId = groupRoomId,
+                        UserEmail = "ze.luis@example.com",
+                        Role = Role.Member,
+                        JoinedAt = DateTime.Now,
+                        User = await _userRepository.GetUserByEmail("ze.luis@example.com")
+                    },
+                    new ChatRoomParticipant
+                    {
+                        ChatRoomId = groupRoomId,
+                        UserEmail = "vasco.moura@example.com",
+                        Role = Role.Member,
+                        JoinedAt = DateTime.Now,
+                        User = await _userRepository.GetUserByEmail("vasco.moura@example.com")
+                    }
+                ],
+                CreatedAt = DateTime.Now,
+            }
+        ]);
     }
+
 
     public async Task<List<ChatRoom>> GetAllChatRooms()
     {
@@ -89,7 +109,7 @@ public class ChatRepository : IChatRepository
         return await Task.FromResult(ChatRooms);
     }
 
-    public async Task<ChatRoom> GetChatRoomById(int id)
+    public async Task<ChatRoom> GetChatRoomById(Guid id)
     {
         await EnsureInitialized();
         var room = ChatRooms.FirstOrDefault(c => c.Id == id);
@@ -97,12 +117,48 @@ public class ChatRepository : IChatRepository
         return await Task.FromResult(room);
     }
 
+    public async Task<List<ChatRoom>> GetAllChatRoomByUserEmail(string userEmail)
+    {
+        await EnsureInitialized();
+        var rooms = ChatRooms.Where(c =>
+            c.Participants.Any(p => p.UserEmail.Equals(userEmail, StringComparison.OrdinalIgnoreCase))).ToList();
+
+        var result = new List<ChatRoom>();
+
+        foreach (var room in rooms)
+        {
+            // Create a shallow copy to safely modify the Name without affecting the singleton storage
+            var roomView = new ChatRoom
+            {
+                Id = room.Id,
+                Type = room.Type,
+                CreatedAt = room.CreatedAt,
+                Participants = room.Participants,
+                Name = room.Name
+            };
+
+            if (room.Type == RoomType.Private)
+            {
+                var otherParticipant = room.Participants.FirstOrDefault(p =>
+                    !p.UserEmail.Equals(userEmail, StringComparison.OrdinalIgnoreCase));
+                if (otherParticipant?.User != null)
+                {
+                    roomView.Name = otherParticipant.User.Name;
+                }
+            }
+
+            result.Add(roomView);
+        }
+
+        return await Task.FromResult(result);
+    }
+
     public async Task<ChatRoom> CreateGroupRoom(CreateGroupRoomInput chatRoom)
     {
         await EnsureInitialized();
 
         var participants = new List<ChatRoomParticipant>();
-        var roomId = _nextId++;
+        var roomId = Guid.NewGuid();
 
         // Add Creator as Admin
         var creator = await _userRepository.GetUserByEmail(chatRoom.CreatorEmail);
@@ -110,7 +166,6 @@ public class ChatRepository : IChatRepository
         {
             participants.Add(new ChatRoomParticipant
             {
-                Id = new Random().Next(10000, 99999),
                 ChatRoomId = roomId,
                 UserEmail = creator.Email,
                 Role = Role.Admin,
@@ -129,7 +184,6 @@ public class ChatRepository : IChatRepository
             {
                 participants.Add(new ChatRoomParticipant
                 {
-                    Id = new Random().Next(10000, 99999),
                     ChatRoomId = roomId,
                     UserEmail = user.Email,
                     Role = Role.Member,
@@ -141,7 +195,6 @@ public class ChatRepository : IChatRepository
 
         var newRoom = new ChatRoom
         {
-            Id = roomId,
             Name = chatRoom.Name,
             Type = RoomType.Group,
             CreatedAt = DateTime.Now,
@@ -157,7 +210,7 @@ public class ChatRepository : IChatRepository
         await EnsureInitialized();
 
         var participants = new List<ChatRoomParticipant>();
-        var roomId = _nextId++;
+        var roomId = Guid.NewGuid();
 
         // Add Creator
         var creator = await _userRepository.GetUserByEmail(input.CreatorEmail);
@@ -165,7 +218,6 @@ public class ChatRepository : IChatRepository
         {
             participants.Add(new ChatRoomParticipant
             {
-                Id = new Random().Next(10000, 99999),
                 ChatRoomId = roomId,
                 UserEmail = creator.Email,
                 Role = Role.Member, // Using Member for private chat equality
@@ -182,7 +234,6 @@ public class ChatRepository : IChatRepository
             {
                 participants.Add(new ChatRoomParticipant
                 {
-                    Id = new Random().Next(10000, 99999),
                     ChatRoomId = roomId,
                     UserEmail = user.Email,
                     Role = Role.Member,
@@ -194,7 +245,6 @@ public class ChatRepository : IChatRepository
 
         var newRoom = new ChatRoom
         {
-            Id = roomId,
             Name = null, // Private room has no name
             Type = RoomType.Private,
             CreatedAt = DateTime.Now,
@@ -205,7 +255,7 @@ public class ChatRepository : IChatRepository
         return await Task.FromResult(newRoom);
     }
 
-    public async Task DeleteChatRoom(int id)
+    public async Task DeleteChatRoom(Guid id)
     {
         await EnsureInitialized();
         var room = ChatRooms.FirstOrDefault(c => c.Id == id);

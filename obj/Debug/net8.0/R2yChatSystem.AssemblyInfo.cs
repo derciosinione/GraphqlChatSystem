@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("R2yChatSystem")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+281fc61a4b2cbcbd435cdfbbbafbe663bd512d68")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+5dd47aca1835985bb0d5f5e7131543006d1179fe")]
 [assembly: System.Reflection.AssemblyProductAttribute("R2yChatSystem")]
 [assembly: System.Reflection.AssemblyTitleAttribute("R2yChatSystem")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

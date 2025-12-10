@@ -17,7 +17,7 @@ public class ChatMutation
         return await chatRepository.CreatePrivateRoom(input);
     }
 
-    public async Task<bool> DeleteChatRoom([Service] IChatRepository chatRepository, int id)
+    public async Task<bool> DeleteChatRoom([Service] IChatRepository chatRepository, Guid id)
     {
         await chatRepository.DeleteChatRoom(id);
         return true;

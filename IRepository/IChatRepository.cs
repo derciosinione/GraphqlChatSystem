@@ -6,8 +6,9 @@ namespace R2yChatSystem.IRepository;
 public interface IChatRepository
 {
     Task<List<ChatRoom>> GetAllChatRooms();
-    Task<ChatRoom> GetChatRoomById(int id);
+    Task<ChatRoom> GetChatRoomById(Guid id);
+    Task<List<ChatRoom>> GetAllChatRoomByUserEmail(string userEmail);
     Task<ChatRoom> CreateGroupRoom(CreateGroupRoomInput chatRoom);
     Task<ChatRoom> CreatePrivateRoom(CreatePrivateRoomInput input);
-    Task DeleteChatRoom(int id);
+    Task DeleteChatRoom(Guid id);
 }
