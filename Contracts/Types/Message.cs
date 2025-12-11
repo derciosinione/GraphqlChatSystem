@@ -18,14 +18,12 @@ public record Message
 
 public record MessageRead
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string UserEmail { get; set; } = string.Empty;
+    public User User { get; set; } = null!;
     public DateTime ReadAt { get; set; } = DateTime.Now;
 }
 
 public record Poll
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
     public required string Question { get; set; }
     public bool IsMultipleChoice { get; set; } = false;
     public List<PollOption> Options { get; set; } = [];
@@ -42,7 +40,6 @@ public record PollOption
 
 public record PollVote
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-    public string UserEmail { get; set; } = string.Empty;
+    public User User { get; set; } = null!;
     public DateTime VotedAt { get; set; } = DateTime.Now;
 }

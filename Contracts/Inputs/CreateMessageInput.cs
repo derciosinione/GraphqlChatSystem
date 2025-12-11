@@ -12,7 +12,7 @@ public class CreateMessageInput
     public Guid? ReplyToMessageId { get; set; }
     public CreatePollInput? Poll { get; set; }
     
-    public MessageType DetermineMessageType()
+    public MessageType GetMessageType()
     {
         var messageType = MessageType.Text;
 

@@ -192,7 +192,7 @@ public class ChatRepository : IChatRepository
 
         var newMessage = new Message
         {
-            Type = input.DetermineMessageType(),
+            Type = input.GetMessageType(),
             ChatRoomId = input.ChatRoomId,
             Sender = sender,
             Content = input.Content,
@@ -202,7 +202,6 @@ public class ChatRepository : IChatRepository
             SentAt = DateTime.Now
         };
 
-        room.Messages ??= [];
         room.Messages.Add(newMessage);
 
         await UpdateRoomMessages(input.ChatRoomId, room.Messages);
@@ -239,13 +238,13 @@ public class ChatRepository : IChatRepository
         var option = message.Poll.Options.FirstOrDefault(o => o.Id == input.OptionId)
                      ?? throw new Exception("Invalid poll option.");
 
-        var alreadyVoted = message.Poll.Options.Any(o => o.Votes.Any(v => v.UserEmail == input.UserEmail));
+        var alreadyVoted = message.Poll.Options.Any(o => o.Votes.Any(v => v.User.Email == input.UserEmail));
 
         if (!message.Poll.IsMultipleChoice && alreadyVoted)
         {
             foreach (var opt in message.Poll.Options)
             {
-                var existingVote = opt.Votes.FirstOrDefault(v => v.UserEmail == input.UserEmail);
+                var existingVote = opt.Votes.FirstOrDefault(v => v.User.Email == input.UserEmail);
                 if (existingVote != null)
                 {
                     opt.Votes.Remove(existingVote);
@@ -253,13 +252,15 @@ public class ChatRepository : IChatRepository
             }
         }
 
-        if (option.Votes.All(v => v.UserEmail != input.UserEmail))
+        if (option.Votes.All(v => v.User.Email != input.UserEmail))
         {
-            option.Votes.Add(new PollVote { UserEmail = input.UserEmail });
+            var userVote = await _userRepository.GetUserByEmail(input.UserEmail) ?? throw new Exception("User not found");
+            
+            option.Votes.Add(new PollVote { User = userVote });
         }
         else
         {
-            var existing = option.Votes.First(v => v.UserEmail == input.UserEmail);
+            var existing = option.Votes.First(v => v.User.Email == input.UserEmail);
             option.Votes.Remove(existing);
         }
 
