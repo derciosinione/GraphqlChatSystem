@@ -5,13 +5,15 @@ namespace R2yChatSystem.IRepository;
 
 public interface IChatRepository
 {
-    Task<List<ChatRoom>> GetAllChatRooms();
-    Task<ChatRoom> GetChatRoomById(Guid id);
-    Task<List<ChatRoom>> GetAllChatRoomByUserEmail(string userEmail);
-    Task<List<Message>> GetAllMessagesByChatRoomId(Guid chatRoomId);
-    Task<Message> SendMessage(CreateMessageInput message);
-    Task<Message> VoteOnPoll(VotePollInput input);
-    Task<ChatRoom> CreateGroupRoom(CreateGroupRoomInput chatRoom);
-    Task<ChatRoom> CreatePrivateRoom(CreatePrivateRoomInput input);
-    Task DeleteChatRoom(Guid id);
+    Task<List<ChatRoom>> GetAllChatRooms(CancellationToken cancellationToken = default);
+    Task<ChatRoom> GetChatRoomById(Guid id, CancellationToken cancellationToken = default);
+    Task<List<ChatRoom>> GetAllChatRoomByUserEmail(string userEmail, CancellationToken cancellationToken = default);
+    Task<List<Message>> GetAllMessagesByChatRoomId(Guid chatRoomId, CancellationToken cancellationToken = default);
+    Task<List<ChatRoomParticipant>> GetAllParticipantsByChatRoomId(Guid chatRoomId, CancellationToken cancellationToken = default);
+    Task<Message> GetMessageById(Guid id, CancellationToken cancellationToken = default);
+    Task<Message> SendMessage(CreateMessageInput message, CancellationToken cancellationToken = default);
+    Task<Message> VoteOnPoll(VotePollInput input, CancellationToken cancellationToken = default);
+    Task<ChatRoom> CreateGroupRoom(CreateGroupRoomInput chatRoom, CancellationToken cancellationToken = default);
+    Task<ChatRoom> CreatePrivateRoom(CreatePrivateRoomInput input, CancellationToken cancellationToken = default);
+    Task DeleteChatRoom(Guid id, CancellationToken cancellationToken = default);
 }

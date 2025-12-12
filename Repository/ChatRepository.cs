@@ -1,9 +1,11 @@
 using System.Text.Json;
 using Dapper;
+using HotChocolate.Subscriptions;
 using Microsoft.Data.SqlClient;
 using R2yChatSystem.Contracts.Enum;
 using R2yChatSystem.Contracts.Inputs;
 using R2yChatSystem.Contracts.Types;
+using R2yChatSystem.Helpers;
 using R2yChatSystem.IRepository;
 using R2yChatSystem.Mappers;
 using R2yChatSystem.Model;
@@ -14,12 +16,14 @@ public class ChatRepository : IChatRepository
 {
     private readonly string _connectionString;
     private readonly IUserRepository _userRepository;
+    private readonly ITopicEventSender _topicEventSender;
 
-    public ChatRepository(IConfiguration configuration, IUserRepository userRepository)
+    public ChatRepository(IConfiguration configuration, IUserRepository userRepository, ITopicEventSender topicEventSender)
     {
         _userRepository = userRepository;
         _connectionString = configuration.GetConnectionString("DefaultConnection")
                             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
+        _topicEventSender = topicEventSender;
 
         InitializeDatabase().Wait();
     }
@@ -48,14 +52,14 @@ public class ChatRepository : IChatRepository
         }
     }
 
-    public async Task<List<ChatRoom>> GetAllChatRooms()
+    public async Task<List<ChatRoom>> GetAllChatRooms(CancellationToken cancellationToken = default)
     {
         await using var connection = new SqlConnection(_connectionString);
         var rooms = await connection.QueryAsync<ChatRoomDbModel>("SELECT * FROM ChatRooms");
         return rooms.ToResponse();
     }
 
-    public async Task<ChatRoom> GetChatRoomById(Guid id)
+    public async Task<ChatRoom> GetChatRoomById(Guid id, CancellationToken cancellationToken = default)
     {
         await using var connection = new SqlConnection(_connectionString);
         var room = await connection.QueryFirstOrDefaultAsync<ChatRoomDbModel>(
@@ -64,7 +68,8 @@ public class ChatRepository : IChatRepository
         return room?.ToResponse() ?? throw new Exception("Chat room not found");
     }
 
-    public async Task<List<ChatRoom>> GetAllChatRoomByUserEmail(string userEmail)
+    public async Task<List<ChatRoom>> GetAllChatRoomByUserEmail(string userEmail,
+        CancellationToken cancellationToken = default)
     {
         await using var connection = new SqlConnection(_connectionString);
 
@@ -102,7 +107,7 @@ public class ChatRepository : IChatRepository
         return result;
     }
 
-    public async Task<ChatRoom> CreateGroupRoom(CreateGroupRoomInput input)
+    public async Task<ChatRoom> CreateGroupRoom(CreateGroupRoomInput input, CancellationToken cancellationToken = default)
     {
         var participants = new List<ChatRoomParticipant>();
 
@@ -122,7 +127,8 @@ public class ChatRepository : IChatRepository
         return await CreateChatRoomWrapper(roomType: RoomType.Group, input.Name, participants: participants);
     }
 
-    public async Task<ChatRoom> CreatePrivateRoom(CreatePrivateRoomInput input)
+    public async Task<ChatRoom> CreatePrivateRoom(CreatePrivateRoomInput input,
+        CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(input.CreatorEmail);
         ArgumentException.ThrowIfNullOrWhiteSpace(input.UserEmail);
@@ -132,7 +138,7 @@ public class ChatRepository : IChatRepository
 
         if (await CheckIfPrivateRoomExists(input.CreatorEmail, input.UserEmail))
             throw new Exception("A private chat between these users already exists.");
-        
+
         var participants = new List<ChatRoomParticipant>();
 
         var creatorUser = await _userRepository.GetUserByEmail(input.CreatorEmail) ??
@@ -145,8 +151,21 @@ public class ChatRepository : IChatRepository
 
         return await CreateChatRoomWrapper(participants: participants);
     }
-    
-    public async Task<List<Message>> GetAllMessagesByChatRoomId(Guid chatRoomId)
+
+    public async Task<List<ChatRoomParticipant>> GetAllParticipantsByChatRoomId(Guid chatRoomId,
+        CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+        var queryResult = await connection.QueryFirstOrDefaultAsync<ChatRoomDbModel>(
+            "SELECT Id, Participants FROM ChatRooms WHERE Id = @Id", new { Id = chatRoomId });
+
+        var room = queryResult?.ToResponse() ?? throw new Exception("Chat room not found");
+
+        return queryResult.Id != chatRoomId ? throw new Exception("Chat room not found") : room.Participants;
+    }
+
+    public async Task<List<Message>> GetAllMessagesByChatRoomId(Guid chatRoomId,
+        CancellationToken cancellationToken = default)
     {
         await using var connection = new SqlConnection(_connectionString);
         var json = await connection.QueryFirstOrDefaultAsync<string>(
@@ -156,24 +175,22 @@ public class ChatRepository : IChatRepository
         return JsonSerializer.Deserialize<List<Message>>(json) ?? [];
     }
 
-    public async Task<Message> SendMessage(CreateMessageInput input)
+    public async Task<Message> SendMessage(CreateMessageInput input, CancellationToken cancellationToken = default)
     {
         var sender = await _userRepository.GetUserByEmail(input.SenderEmail)
                      ?? throw new Exception("Sender user not found");
 
-        var room = await GetChatRoomById(input.ChatRoomId);
+        var room = await GetChatRoomById(input.ChatRoomId, cancellationToken);
 
-        var isValidParticipant =
-            room.Participants.Any(x => x.User.Email.Equals(input.SenderEmail, StringComparison.OrdinalIgnoreCase));
-        
+        var isValidParticipant = room.Participants
+            .Any(x => x.User.Email.Equals(input.SenderEmail, StringComparison.OrdinalIgnoreCase));
+
         if (!isValidParticipant)
-            throw  new Exception("Sender user not found in the chat room.");
+            throw new Exception("Sender user not found in the chat room.");
 
         Message? replyToMessage = null;
         if (input.ReplyToMessageId.HasValue)
-        {
             replyToMessage = room.Messages.FirstOrDefault(m => m.Id == input.ReplyToMessageId.Value);
-        }
 
         Poll? poll = null;
         if (input.Poll != null)
@@ -201,15 +218,40 @@ public class ChatRepository : IChatRepository
             Poll = poll,
             SentAt = DateTime.Now
         };
-
         room.Messages.Add(newMessage);
 
         await UpdateRoomMessages(input.ChatRoomId, room.Messages);
 
+        var emailsToSend = room.Participants
+            .Where(x => x.User.Email != sender.Email)
+            .Select(x => x.User.Email);
+        
+        await SendSubscriptionEventMessage(TopicsTypes.User, newMessage.Id, emailsToSend, cancellationToken);
+
         return newMessage;
     }
 
-    public async Task<Message> VoteOnPoll(VotePollInput input)
+    public async Task<Message> GetMessageById(Guid id, CancellationToken cancellationToken = default)
+    {
+        await using var connection = new SqlConnection(_connectionString);
+
+        const string sql = """
+                               SELECT Top 1 * FROM ChatRooms 
+                               WHERE EXISTS (
+                                   SELECT 1 
+                                   FROM OPENJSON(Messages) WITH (Id UNIQUEIDENTIFIER '$.Id') 
+                                   WHERE Id = @MessageId
+                               )
+                           """;
+
+        var roomDb = await connection.QueryFirstOrDefaultAsync<ChatRoomDbModel>(sql, new { MessageId = id })
+                     ?? throw new Exception("Message not found.");
+
+        var room = roomDb.ToResponse();
+        return room.Messages.FirstOrDefault(m => m.Id == id) ?? throw new Exception("Message not found");
+    }
+
+    public async Task<Message> VoteOnPoll(VotePollInput input, CancellationToken cancellationToken = default)
     {
         await using var connection = new SqlConnection(_connectionString);
 
@@ -255,7 +297,7 @@ public class ChatRepository : IChatRepository
         if (option.Votes.All(v => v.User.Email != input.UserEmail))
         {
             var userVote = await _userRepository.GetUserByEmail(input.UserEmail) ?? throw new Exception("User not found");
-            
+
             option.Votes.Add(new PollVote { User = userVote });
         }
         else
@@ -269,7 +311,7 @@ public class ChatRepository : IChatRepository
         return message;
     }
 
-    public async Task DeleteChatRoom(Guid id)
+    public async Task DeleteChatRoom(Guid id, CancellationToken cancellationToken = default)
     {
         await using var connection = new SqlConnection(_connectionString);
         await connection.ExecuteAsync("DELETE FROM ChatRooms WHERE Id = @Id", new { Id = id });
@@ -277,7 +319,7 @@ public class ChatRepository : IChatRepository
 
     #region  Helpers
 
-     private async Task UpdateRoomMessages(Guid roomId, List<Message> messages)
+    private async Task UpdateRoomMessages(Guid roomId, List<Message> messages)
     {
         var json = JsonSerializer.Serialize(messages);
         await using var connection = new SqlConnection(_connectionString);
@@ -317,7 +359,7 @@ public class ChatRepository : IChatRepository
 
         return newRoom;
     }
-    
+
     private async Task<bool> CheckIfPrivateRoomExists(string firstEmail, string secondEmail)
     {
         await using var connection = new SqlConnection(_connectionString);
@@ -336,5 +378,14 @@ public class ChatRepository : IChatRepository
         var count = await connection.ExecuteScalarAsync<int>(sql, new { FirstEmail = firstEmail, SecondEmail = secondEmail });
         return count > 0;
     }
+
+    private async Task SendSubscriptionEventMessage<T>(string topicName, T message,
+        IEnumerable<string> emailsToSend, CancellationToken cancellationToken)
+    {
+        foreach (var email in emailsToSend)
+            await _topicEventSender.SendAsync(TopicsTypes.GetTopicName(topicName, email), message,
+                cancellationToken);
+    }
+
     #endregion
 }
