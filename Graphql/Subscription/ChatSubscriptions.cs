@@ -1,10 +1,6 @@
-using System.Collections.Generic;
+
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
-using HotChocolate;
-using HotChocolate.Execution;
 using HotChocolate.Subscriptions;
-using HotChocolate.Types;
 using R2yChatSystem.Contracts.Types;
 using R2yChatSystem.Helpers;
 using R2yChatSystem.IRepository;
@@ -14,21 +10,36 @@ namespace R2yChatSystem.Graphql.Subscription;
 [SubscriptionType]
 public class ChatSubscriptions
 {
-    [Subscribe(With = nameof(CreateStream))]
-    public async Task<Message> OnMessageReceivedAsync(
-        [EventMessage] Guid messageId,
-        [Service] IChatRepository chatRepository,
-        CancellationToken cancellationToken)
-    {
-        return await chatRepository.GetMessageById(messageId, cancellationToken);
-    }
 
-    public async ValueTask<ISourceStream<Guid>> CreateStream(
-        string currentUserEmail,
-        [Service] ITopicEventReceiver receiver,
-        CancellationToken cancellationToken)
+    public async IAsyncEnumerable<Guid> CreateStream(string currentUserEmail,
+        [Service] ITopicEventReceiver receiver, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var topicName = TopicsTypes.GetTopicName(TopicsTypes.User, currentUserEmail);
-        return await receiver.SubscribeAsync<Guid>(topicName, cancellationToken);
+        
+        var sourceStream = await receiver.SubscribeAsync<Guid>(topicName, cancellationToken);
+
+        await Task.Delay(5000, cancellationToken);
+
+        await foreach (var item in sourceStream.ReadEventsAsync().WithCancellation(cancellationToken))
+        {
+            yield return item;
+        }
+    }
+    
+    
+    [Subscribe(With = nameof(CreateStream))]
+    public async Task<Message?> OnMessageReceivedAsync(
+        [EventMessage] Guid messageId,
+        [Service] IChatRepository chatRepository,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await chatRepository.GetMessageById(messageId, cancellationToken);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 }
